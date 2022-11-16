@@ -5,6 +5,8 @@
 extern "C" {
 #endif
 
+#include <stdio.h>
+
 #include "stm32f0xx_hal.h"
 
 // FreeRTOS headers

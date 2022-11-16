@@ -25,6 +25,17 @@ void vTask1(void *pvParameters)
 	while(1)
 	{
 		HAL_GPIO_TogglePin(GPIOA, GPIO_PIN_5);
+
+		int a, b;
+
+		printf("Number A:");
+		scanf("%d", &a);
+
+		printf("Number B:");
+		scanf("%d", &b);
+
+		printf("A + B: %d\n", a + b);
+
 		vTaskDelay(300);
 	}
 }

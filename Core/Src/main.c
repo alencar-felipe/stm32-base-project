@@ -22,6 +22,16 @@
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 
+// FreeRTOS headers
+#include "FreeRTOSConfig.h"
+#include "FreeRTOS.h"
+#include "task.h"
+#include "timers.h"
+#include "semphr.h"
+#include "queue.h"
+#include "event_groups.h"
+#include "stream_buffer.h"
+
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -39,15 +49,26 @@
 /* USER CODE END PM */
 
 /* Private variables ---------------------------------------------------------*/
+UART_HandleTypeDef huart2;
 
 /* USER CODE BEGIN PV */
+
+static SemaphoreHandle_t usart2WriteMutex;
+static SemaphoreHandle_t usart2ReadMutex;
 
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
+static void MX_USART2_UART_Init(void);
 /* USER CODE BEGIN PFP */
+
+/*
+ * Redefinition of newlib functions to redirect stdout and stdin to USART2
+ */
+int _write(int fd, char *ptr, int len);
+int _read (int fd, char *ptr, int len);
 
 /* USER CODE END PFP */
 
@@ -84,6 +105,7 @@ int main(void)
 
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
+  MX_USART2_UART_Init();
   /* USER CODE BEGIN 2 */
   app();
   /* USER CODE END 2 */
@@ -107,6 +129,7 @@ void SystemClock_Config(void)
 {
   RCC_OscInitTypeDef RCC_OscInitStruct = {0};
   RCC_ClkInitTypeDef RCC_ClkInitStruct = {0};
+  RCC_PeriphCLKInitTypeDef PeriphClkInit = {0};
 
   /** Initializes the RCC Oscillators according to the specified parameters
   * in the RCC_OscInitTypeDef structure.
@@ -131,6 +154,50 @@ void SystemClock_Config(void)
   {
     Error_Handler();
   }
+  PeriphClkInit.PeriphClockSelection = RCC_PERIPHCLK_USART2;
+  PeriphClkInit.Usart2ClockSelection = RCC_USART2CLKSOURCE_PCLK1;
+  if (HAL_RCCEx_PeriphCLKConfig(&PeriphClkInit) != HAL_OK)
+  {
+    Error_Handler();
+  }
+}
+
+/**
+  * @brief USART2 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_USART2_UART_Init(void)
+{
+
+  /* USER CODE BEGIN USART2_Init 0 */
+
+  /* USER CODE END USART2_Init 0 */
+
+  /* USER CODE BEGIN USART2_Init 1 */
+
+  /* USER CODE END USART2_Init 1 */
+  huart2.Instance = USART2;
+  huart2.Init.BaudRate = 115200;
+  huart2.Init.WordLength = UART_WORDLENGTH_8B;
+  huart2.Init.StopBits = UART_STOPBITS_1;
+  huart2.Init.Parity = UART_PARITY_NONE;
+  huart2.Init.Mode = UART_MODE_TX_RX;
+  huart2.Init.HwFlowCtl = UART_HWCONTROL_NONE;
+  huart2.Init.OverSampling = UART_OVERSAMPLING_16;
+  huart2.Init.OneBitSampling = UART_ONE_BIT_SAMPLE_DISABLE;
+  huart2.AdvancedInit.AdvFeatureInit = UART_ADVFEATURE_NO_INIT;
+  if (HAL_UART_Init(&huart2) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN USART2_Init 2 */
+
+  usart2WriteMutex = xSemaphoreCreateMutex();
+  usart2ReadMutex = xSemaphoreCreateMutex();
+
+  /* USER CODE END USART2_Init 2 */
+
 }
 
 /**
@@ -158,6 +225,44 @@ static void MX_GPIO_Init(void)
 }
 
 /* USER CODE BEGIN 4 */
+
+int _write(int fd, char *ptr, int len)
+{
+	xSemaphoreTake(usart2WriteMutex, portMAX_DELAY);
+
+	while(huart2.gState != HAL_UART_STATE_READY) {
+		vTaskDelay(1);
+	}
+
+	HAL_UART_Transmit_IT(&huart2, (uint8_t *) ptr, len);
+
+	xSemaphoreGive(usart2WriteMutex);
+
+	return len;
+}
+
+int _read (int fd, char *ptr, int len)
+{
+
+	//quick fix for length problem (VERY INEFFICIENT !!!)
+	len = (len < 1) ? len : 1;
+
+	xSemaphoreTake(usart2ReadMutex, portMAX_DELAY);
+
+	while(huart2.RxState != HAL_UART_STATE_READY) {
+		vTaskDelay(1);
+	}
+
+	HAL_UART_Receive_IT(&huart2, (uint8_t *) ptr, len);
+
+	while(huart2.RxState != HAL_UART_STATE_READY) {
+		vTaskDelay(1);
+	}
+
+	xSemaphoreGive(usart2ReadMutex);
+
+	return len;
+}
 
 /* USER CODE END 4 */
 
